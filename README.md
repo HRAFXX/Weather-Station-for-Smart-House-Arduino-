@@ -1,186 +1,145 @@
-# Weather-Station-for-Smart-House-Arduino-
-Designed and built a weather station integrated with an innovative house system using Arduino. Used sensors to collect real-time weather data such as temperature, humidity, and atmospheric pressure. Developed a user interface to display weather information and control smart devices based on weather conditions.
+# 🌤️ Weather Station for Smart House - Arduino Edition
 
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-#include "DHT.h"
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform: Arduino](https://img.shields.io/badge/Platform-Arduino-blue.svg)](https://www.arduino.cc/)
+[![Language: C++](https://img.shields.io/badge/Language-C%2B%2B-orange.svg)]()
 
-// Constants for the hall effect sensor (wind speed)
-const int hallPin = 2; // Hall effect sensor connected to digital pin 2
-const float magnetDistance = 0.10; // Distance per revolution in meters (adjust as needed)
-volatile unsigned long startTime = 0; // Time when a magnet is detected
-volatile unsigned long endTime = 0; // Time when the next magnet is detected
-volatile boolean newWindData = false; // Flag to indicate new wind data
-volatile int magnetCounter = 0; // Counter for magnet detections
+## 📡 About This Project
 
-// Constants for the rain gauge
-const float mmPerPulse = 0.173; // Value of rain in mm for each movement of the bucket
-float mmTotali = 0;
-int sensore = 0;
-int statoPrecedente = 0;
+Welcome to your very own DIY Smart House Weather Station! This project uses an Arduino Uno and a DHT11 sensor to monitor **temperature** and **humidity**. Plus, it displays everything on a slick color TFT screen so your home gets its own meteorology lab.
 
-// Constants for the DHT sensor
-#define DHTPIN 3 // Changed to avoid conflict with hallPin
-#define DHTTYPE DHT22
+Whether you're looking to smarten up your house or just love playing with sensors, you're in the right place. Let’s go full weather wizard! 🌪️
+
+<p align="center">
+  <img src="images/weather-station-demo.jpg" alt="Weather Station Display" width="400"/>
+</p>
+
+---
+
+## 🌟 Features
+
+- **Dual Readings**: Reads both **temperature** and **humidity** in real time.
+- **Colorful Display**: Live weather info on a bright TFT screen (with emojis for extra flair).
+- **Plug-and-Play**: Easy to assemble, beginner-friendly code.
+- **Expandable**: Add more sensors, WiFi modules, or even cloud logging!
+
+---
+
+## 🧰 Tech Stack
+
+- **🔌 Arduino Uno R3** – The brain of the system.
+- **🌡️ DHT11 Sensor** – Measures temperature and humidity.
+- **📺 ILI9341 TFT Display** – Shows data in style (can be replaced with an OLED).
+- **⚡ C++ / Arduino IDE** – Programming environment.
+
+---
+
+## 🛠️ Hardware Required
+
+| Component              | Quantity |
+|------------------------|----------|
+| Arduino Uno R3         | 1        |
+| DHT11 Temp/Humidity Sensor | 1    |
+| ILI9341 TFT Display (or similar) | 1 |
+| Breadboard             | 1        |
+| Jumper Wires           | Several  |
+| USB Cable for Arduino  | 1        |
+| 4.7kΩ Resistor         | 1        |
+
+---
+
+## 🧪 How to Build It
+
+### 1. **Wiring the Circuit**
+
+- **DHT11 Sensor**
+  - VCC → 5V
+  - GND → GND
+  - DATA → Digital Pin 2
+  - 4.7kΩ resistor between VCC and DATA
+
+- **TFT Display (ILI9341 Example Pins)**
+  - CS → Pin 10  
+  - DC → Pin 9  
+  - RST → Pin 8  
+  - SCLK → Pin 13  
+  - MOSI → Pin 11  
+  - VCC → 5V  
+  - GND → GND
+
+> Make sure to match your display's wiring if it differs.
+
+---
+
+## 💻 Installation & Upload
+
+1. **Install the Arduino IDE** – [Download it here](https://www.arduino.cc/en/software)
+2. **Install Libraries** via Library Manager:
+   - `DHT sensor library` by Adafruit
+   - `Adafruit Unified Sensor`
+   - `Adafruit GFX`
+   - `Adafruit ILI9341`
+3. **Connect your Arduino** via USB
+4. **Open the Sketch** and upload the code below 👇
+
+---
+
+## 📜 Full Arduino Code
+
+```cpp
+#include <DHT.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+
+// ==== Pin Config ====
+#define DHTPIN 2
+#define DHTTYPE DHT11
+
 DHT dht(DHTPIN, DHTTYPE);
 
-// LCD initialization
-LiquidCrystal_I2C lcd(0x27, 20, 4);
+// TFT Display Pins (update if needed)
+#define TFT_CS    10
+#define TFT_DC     9
+#define TFT_RST    8
 
-// Function declarations
-void detectMagnet();
-float calculateWindSpeed();
-void displayWindSpeed(float windSpeed);
-void displayRainfall(float rainfall);
-void displayDHTData(float humidity, float tempC, float tempF, float heatIndexC, float heatIndexF);
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
 
 void setup() {
-  // Setup for hall effect sensor (wind speed)
-  Serial.begin(9600); // Start serial communication at 9600 baud
-  pinMode(hallPin, INPUT_PULLUP); // Set hallPin as input with pull-up resistor
-  attachInterrupt(digitalPinToInterrupt(hallPin), detectMagnet, RISING); // Attach interrupt to hallPin
-  Serial.println("Setup completed. Waiting for magnet detection...");
-
-  // Setup for rain gauge
-  pinMode(9, INPUT);
-  lcd.init();
-  lcd.backlight();
-  lcd.setCursor(6, 0);
-  lcd.print("HRAF");
-  lcd.setCursor(3, 2);
-  lcd.print("Weather Station");
-  delay(1000);
-  lcd.clear();
-
-  // Setup for DHT sensor
+  Serial.begin(9600);
   dht.begin();
+  tft.begin();
+  tft.setRotation(1);
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(ILI9341_WHITE);
 }
 
 void loop() {
-  // Loop for hall effect sensor (wind speed)
-  if (newWindData) { // If new wind data is available
-    float windSpeed = calculateWindSpeed(); // Calculate wind speed
-    Serial.print("Wind Speed: ");
-    Serial.print(windSpeed);
-    Serial.println(" m/s");
-    newWindData = false; // Reset the flag
-    Serial.println("Waiting for next magnet detection...");
-    displayWindSpeed(windSpeed); // Display wind speed on LCD
-  }
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
 
-  // Loop for rain gauge
-  sensore = digitalRead(9);
-  if (sensore != statoPrecedente) {
-    mmTotali = mmTotali + mmPerPulse;
-  }
-  statoPrecedente = sensore;
-  displayRainfall(mmTotali); // Display rainfall on LCD
-
-  // Loop for DHT sensor
-  delay(2000);
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-  float f = dht.readTemperature(true);
-
-  if (isnan(h) || isnan(t) || isnan(f)) {
-    Serial.println(F("Failed to read from DHT sensor!"));
+  if (isnan(temp) || isnan(hum)) {
+    Serial.println("❌ Failed to read from DHT sensor!");
     return;
   }
 
-  float hif = dht.computeHeatIndex(f, h);
-  float hic = dht.computeHeatIndex(t, h, false);
+  Serial.print("🌡️ Temp: ");
+  Serial.print(temp);
+  Serial.print(" °C | 💧 Humidity: ");
+  Serial.print(hum);
+  Serial.println(" %");
 
-  Serial.print(F("Humidity: "));
-  Serial.print(h);
-  Serial.print(F("%  Temperature: "));
-  Serial.print(t);
-  Serial.print(F("°C "));
-  Serial.print(f);
-  Serial.print(F("°F  Heat index: "));
-  Serial.print(hic);
-  Serial.print(F("°C "));
-  Serial.print(hif);
-  Serial.println(F("°F"));
+  // Draw on TFT screen
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setCursor(10, 30);
+  tft.print("🌡 Temp: ");
+  tft.print(temp);
+  tft.println(" C");
 
-  displayDHTData(h, t, f, hic, hif); // Display DHT data on LCD
+  tft.setCursor(10, 60);
+  tft.print("💧 Hum: ");
+  tft.print(hum);
+  tft.println(" %");
+
+  delay(3000); // Update every 3 sec
 }
-
-void detectMagnet() {
-  magnetCounter++; // Increment magnet counter
-
-  if (magnetCounter % 2 == 1) { // First detection in a pair
-    startTime = millis();
-    Serial.println("First magnet detected.");
-  } else { // Second detection in a pair
-    endTime = millis();
-    Serial.println("Second magnet detected.");
-    newWindData = true;
-  }
-}
-
-float calculateWindSpeed() {
-  float elapsedTime = (endTime - startTime) / 1000.0; // Convert milliseconds to seconds
-  if (elapsedTime == 0) {
-    Serial.println("Elapsed time is zero, avoiding division by zero.");
-    return 0; // Avoid division by zero
-  }
-  float windSpeed = magnetDistance / elapsedTime; // Speed = Distance / Time
-  startTime = endTime; // Reset the start time for the next calculation
-  endTime = 0; // Reset the end time for the next calculation
-  return windSpeed;
-}
-
-void displayWindSpeed(float windSpeed) {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Wind Speed:");
-  lcd.setCursor(0, 1);
-  lcd.print(windSpeed);
-  lcd.print(" m/s");
-  delay(5000); // Wait for 5 seconds
-}
-
-void displayRainfall(float rainfall) {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Pluviometer");
-  lcd.setCursor(0, 1);
-  lcd.print("Total precipitation:");
-  lcd.setCursor(0, 2);
-  lcd.print(rainfall);
-  lcd.print(" mm");
-  delay(5000); // Wait for 5 seconds
-}
-
-void displayDHTData(float humidity, float tempC, float tempF, float heatIndexC, float heatIndexF) {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Humidity:");
-  lcd.setCursor(0, 1);
-  lcd.print(humidity);
-  lcd.print("%");
-  
-  lcd.setCursor(0, 2);
-  lcd.print("Temp:");
-  lcd.setCursor(0, 3);
-  lcd.print(tempC);
-  lcd.print("C ");
-  lcd.print(tempF);
-  lcd.print("F");
-  delay(5000); // Wait for 5 seconds
-
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Heat Index:");
-  lcd.setCursor(0, 1);
-  lcd.print(heatIndexC);
-  lcd.print("C ");
-  lcd.print(heatIndexF);
-  lcd.print("F");
-  lcd.setCursor(0, 2);
-  lcd.print("Pressure :");
-  lcd.setCursor(0, 3);
-  lcd.print("1015hPa");
-  delay(5000); // Wait for 5 seconds
-}
-
